@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CMC Auto-Login</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+        }
+        
+        .container {
+            text-align: center;
+            padding: 2rem;
+            max-width: 500px;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 1.5rem;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+        
+        p {
+            font-size: 0.95rem;
+            opacity: 0.9;
+            margin-bottom: 0.5rem;
+        }
+        
+        .status {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            font-size: 0.875rem;
+        }
+        
+        .error {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        
+        .success {
+            background: rgba(34, 197, 94, 0.2);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+        
+        button {
+            margin-top: 1rem;
+            padding: 0.75rem 2rem;
+            background: #fff;
+            color: #667eea;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+        }
+        
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="spinner" id="spinner"></div>
+        <h1>Logging in to CMC...</h1>
+        <p id="message">Please wait while we authenticate</p>
+        <div id="status" class="status hidden"></div>
+        <button id="manualLogin" class="hidden" onclick="openCmcDirectly()">Open CMC Directly</button>
+    </div>
+
+    <script>
+        // Get CMC details from URL parameters
+        const params = new URLSearchParams(window.location.search);
+        const address = params.get('address');
+        const username = params.get('username');
+        const password = params.get('password');
+
+        const spinner = document.getElementById('spinner');
+        const message = document.getElementById('message');
+        const status = document.getElementById('status');
+        const manualLogin = document.getElementById('manualLogin');
+
+        async function autoLogin() {
+            if (!address || !username || !password) {
+                showError('Missing credentials. Please configure CMC properly.');
+                return;
+            }
+
+            try {
+                // Attempt to get auth token
+                message.textContent = 'Authenticating with CMC...';
+                
+                const response = await fetch(`${address}/api/auth/token`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Authentication failed: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                
+                if (data.accessToken) {
+                    // Success - store token and redirect
+                    message.textContent = 'Authentication successful!';
+                    showSuccess('Redirecting to CMC interface...');
+                    
+                    // Store token in sessionStorage for this window
+                    sessionStorage.setItem('cmc_token', data.accessToken);
+                    sessionStorage.setItem('cmc_address', address);
+                    
+                    // Redirect to CMC
+                    setTimeout(() => {
+                        window.location.href = address;
+                    }, 500);
+                } else {
+                    throw new Error('No access token received');
+                }
+            } catch (error) {
+                console.error('Auto-login error:', error);
+                showError(`Login failed: ${error.message}`);
+                
+                // Show manual login option
+                manualLogin.classList.remove('hidden');
+            }
+        }
+
+        function showError(msg) {
+            spinner.classList.add('hidden');
+            message.textContent = 'Auto-login failed';
+            status.textContent = msg;
+            status.classList.remove('hidden', 'success');
+            status.classList.add('error');
+        }
+
+        function showSuccess(msg) {
+            status.textContent = msg;
+            status.classList.remove('hidden', 'error');
+            status.classList.add('success');
+        }
+
+        function openCmcDirectly() {
+            window.location.href = address;
+        }
+
+        // Start auto-login when page loads
+        autoLogin();
+    </script>
+</body>
+</html>

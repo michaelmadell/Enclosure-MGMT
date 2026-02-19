@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto Login Proxy</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        #loginFrame {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+        #status {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 1000;
+            max-width: 300px;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="status">Initializing...</div>
+    <iframe id="loginFrame" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"></iframe>
+
+    <script>
+        // Parse URL parameters
+        const params = new URLSearchParams(window.location.search);
+        const address = params.get('address');
+        const username = params.get('username');
+        const password = params.get('password');
+
+        const statusDiv = document.getElementById('status');
+        const iframe = document.getElementById('loginFrame');
+
+        function updateStatus(message) {
+            console.log(message);
+            statusDiv.textContent = message;
+        }
+
+        function hideStatus() {
+            setTimeout(() => {
+                statusDiv.classList.add('hidden');
+            }, 2000);
+        }
+
+        if (!address || !username || !password) {
+            updateStatus('❌ Missing credentials in URL parameters');
+        } else {
+            updateStatus('🔄 Loading CMC interface...');
+            iframe.src = address;
+
+            iframe.onload = () => {
+                updateStatus('✅ CMC loaded, attempting auto-login...');
+                
+                // Try to access iframe and perform login
+                try {
+                    const iframeDoc = iframe.contentWindow.document;
+                    
+                    // Wait a bit for the page to fully render
+                    setTimeout(() => {
+                        try {
+                            // Try multiple selector strategies
+                            const usernameField = 
+                                iframeDoc.getElementById('username') ||
+                                iframeDoc.querySelector('input[name="username"]') ||
+                                iframeDoc.querySelector('input[type="text"]') ||
+                                iframeDoc.querySelector('input[placeholder*="username" i]');
+                            
+                            const passwordField = 
+                                iframeDoc.getElementById('password') ||
+                                iframeDoc.querySelector('input[name="password"]') ||
+                                iframeDoc.querySelector('input[type="password"]');
+                            
+                            const loginButton = 
+                                iframeDoc.getElementById('login-btn') ||
+                                iframeDoc.querySelector('button[type="submit"]') ||
+                                iframeDoc.querySelector('input[type="submit"]') ||
+                                iframeDoc.querySelector('button');
+
+                            if (usernameField && passwordField && loginButton) {
+                                updateStatus('🔐 Filling credentials...');
+                                
+                                usernameField.value = username;
+                                passwordField.value = password;
+
+                                // Trigger events
+                                ['input', 'change', 'blur'].forEach(eventType => {
+                                    usernameField.dispatchEvent(new Event(eventType, { bubbles: true }));
+                                    passwordField.dispatchEvent(new Event(eventType, { bubbles: true }));
+                                });
+
+                                // Click login
+                                setTimeout(() => {
+                                    loginButton.click();
+                                    updateStatus('✅ Login submitted!');
+                                    hideStatus();
+                                }, 200);
+                            } else {
+                                updateStatus('⚠️ Login form not found - may need manual login');
+                                console.log('Found fields:', { usernameField, passwordField, loginButton });
+                                hideStatus();
+                            }
+                        } catch (innerError) {
+                            updateStatus('⚠️ Could not auto-fill - cross-origin restriction');
+                            console.error('Auto-login error:', innerError);
+                            hideStatus();
+                        }
+                    }, 1000);
+                } catch (error) {
+                    updateStatus('⚠️ Cross-origin restriction - manual login required');
+                    console.error('Iframe access error:', error);
+                    hideStatus();
+                }
+            };
+
+            iframe.onerror = () => {
+                updateStatus('❌ Failed to load CMC interface');
+            };
+        }
+    </script>
+</body>
+</html>
