@@ -57,7 +57,7 @@ if [ ! -f "package.json" ]; then
 fi
 
 echo -e "${YELLOW}→${NC} Installing dependencies..."
-npm install --quiet
+npm install --quiet --legacy-peer-deps
 
 echo -e "${YELLOW}→${NC} Building production bundle..."
 npm run build

@@ -1,82 +1,101 @@
-import React, { useState, useEffect } from 'react';
-import { Shield, RefreshCw, Clock, CheckCircle, XCircle } from 'lucide-react';
-import { storage } from '../utils/storage';
-import { refreshToken } from '../utils/api';
+import React, { useState, useEffect, useRef } from 'react';
+import { Shield, CheckCircle, Clock, AlertCircle, XCircle, RefreshCw } from 'lucide-react';
+import { getTokenTimeRemaining, refreshToken } from '../utils/cmcDeviceApi';
 
 export const TokenStatus = ({ cmc }) => {
-  const [tokenInfo, setTokenInfo] = useState(null);
+  const [timeRemaining, setTimeRemaining] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [timeUntilExpiry, setTimeUntilExpiry] = useState(null);
-
-  const updateTokenInfo = () => {
-    try {
-      const tokens = localStorage.getItem('cmc-central-manager-tokens');
-      if (!tokens) {
-        setTokenInfo(null);
-        return;
-      }
-      
-      const tokenMap = JSON.parse(tokens);
-      const tokenData = tokenMap[cmc.id];
-      
-      if (!tokenData) {
-        setTokenInfo(null);
-        return;
-      }
-
-      const expiresAt = new Date(tokenData.expiresAt);
-      const now = new Date();
-      const timeLeft = expiresAt - now;
-      
-      setTokenInfo({
-        hasToken: true,
-        expiresAt: tokenData.expiresAt,
-        createdAt: tokenData.createdAt,
-        isExpired: timeLeft <= 0,
-        timeLeft: timeLeft
-      });
-      
-      // Update countdown
-      if (timeLeft > 0) {
-        const minutes = Math.floor(timeLeft / 60000);
-        const seconds = Math.floor((timeLeft % 60000) / 1000);
-        setTimeUntilExpiry(`${minutes}m ${seconds}s`);
-      } else {
-        setTimeUntilExpiry('Expired');
-      }
-    } catch (error) {
-      console.error('Failed to get token info:', error);
-      setTokenInfo(null);
-    }
-  };
+  const autoRefreshAttempted = useRef(false);
 
   useEffect(() => {
-    updateTokenInfo();
-    const interval = setInterval(updateTokenInfo, 1000); // Update every second
-    return () => clearInterval(interval);
+    const updateTime = () => {
+      const remaining = getTokenTimeRemaining(cmc.id);
+      setTimeRemaining(remaining);
+    };
+
+    // Update immediately
+    updateTime();
+
+    // Update every second
+    const interval = setInterval(updateTime, 1000);
+
+    // Listen for token updates
+    const handleTokenUpdate = (event) => {
+      if (event.detail.cmcId === cmc.id) {
+        updateTime();
+        // Reset auto-refresh flag when token is updated
+        autoRefreshAttempted.current = false;
+      }
+    };
+
+    window.addEventListener('cmc-token-updated', handleTokenUpdate);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('cmc-token-updated', handleTokenUpdate);
+    };
   }, [cmc.id]);
 
   const handleRefresh = async () => {
+    if (refreshing) return; // Prevent concurrent refreshes
+    
     setRefreshing(true);
     const result = await refreshToken(cmc);
     setRefreshing(false);
     
-    if (result.success) {
-      updateTokenInfo();
-    } else {
+    if (!result.success) {
       alert(`Failed to refresh token: ${result.error}`);
     }
   };
 
-  if (!tokenInfo) {
+  // Auto-refresh effect - separate from the timer effect
+  useEffect(() => {
+    if (!timeRemaining) return;
+
+    const { milliseconds } = timeRemaining;
+    const isExpiringSoon = milliseconds < 2 * 60 * 1000; // Less than 2 minutes
+    const isExpired = milliseconds <= 0;
+
+    // Auto-refresh when token is expiring soon (only once per token lifecycle)
+    if (isExpiringSoon && !refreshing && !isExpired && !autoRefreshAttempted.current) {
+      console.log('⏰ Token expiring soon, auto-refreshing...');
+      autoRefreshAttempted.current = true;
+      handleRefresh();
+    }
+  }, [timeRemaining?.milliseconds]); // Only depend on milliseconds
+
+  // No token yet
+  if (!timeRemaining) {
     return (
-      <div className="flex items-center gap-2 text-slate-400 text-sm">
+      <div className="flex items-center gap-2 text-base-content/50 text-sm">
         <Shield className="w-4 h-4" />
-        <span>No active token</span>
+        <span className="hidden sm:inline">No Token</span>
         <button
           onClick={handleRefresh}
           disabled={refreshing}
-          className="ml-2 text-blue-400 hover:text-blue-300 disabled:opacity-50"
+          className="btn btn-ghost btn-xs"
+          title="Get Token"
+        >
+          <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
+    );
+  }
+
+  const { minutes, seconds, milliseconds } = timeRemaining;
+  const isExpiringSoon = milliseconds < 2 * 60 * 1000; // Less than 2 minutes
+  const isExpired = milliseconds <= 0;
+
+  if (isExpired) {
+    return (
+      <div className="flex items-center gap-2 text-error text-sm">
+        <XCircle className="w-4 h-4" />
+        <span className="font-medium hidden sm:inline">Token Expired</span>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="btn btn-ghost btn-xs"
+          title="Refresh Token"
         >
           <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
         </button>
@@ -86,22 +105,22 @@ export const TokenStatus = ({ cmc }) => {
 
   return (
     <div className={`flex items-center gap-2 text-sm ${
-      tokenInfo.isExpired ? 'text-red-400' : 
-      tokenInfo.timeLeft < 300000 ? 'text-yellow-400' : // < 5 minutes
-      'text-green-400'
+      isExpiringSoon ? 'text-warning' : 'text-success'
     }`}>
-      {tokenInfo.isExpired ? (
-        <XCircle className="w-4 h-4" />
+      {isExpiringSoon ? (
+        <AlertCircle className="w-4 h-4 animate-pulse" />
       ) : (
         <CheckCircle className="w-4 h-4" />
       )}
       <Clock className="w-4 h-4" />
-      <span className="font-medium">{timeUntilExpiry}</span>
+      <span className="font-mono font-medium">
+        {minutes}:{seconds.toString().padStart(2, '0')}
+      </span>
       <button
         onClick={handleRefresh}
         disabled={refreshing}
+        className="btn btn-ghost btn-xs"
         title="Refresh Token"
-        className="text-current hover:opacity-75 disabled:opacity-50 transition-opacity"
       >
         <RefreshCw className={`w-3 h-3 ${refreshing ? 'animate-spin' : ''}`} />
       </button>

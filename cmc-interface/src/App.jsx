@@ -1,8 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Server, Plus, LogOut, Shield, User } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { useCmcs } from './hooks/useCmcs';
-import { useTheme } from './hooks/useTheme';
 import { CmcSidebar } from './components/CmcSidebar';
 import { CmcViewer } from './components/CmcViewer';
 import { EmptyState } from './components/EmptyState';
@@ -10,43 +8,146 @@ import { AddCmcModal } from './components/AddCmcModal';
 import { EditCmcModal } from './components/EditCmcModal';
 import { ThemeToggle } from './components/ThemeToggle';
 import { Login } from './components/Login';
+import { API_BASE_URL } from './config';
+import { useTheme } from './hooks/useTheme';
+import { useCmcs } from './hooks/useCmcs';
+
+
 
 function AppContent() {
   const { user, logout, isAdmin, isGuest, isAuthenticated, loading: authLoading } = useAuth();
-  const { cmcs, selectedCmc, setSelectedCmc, addCmc, updateCmc, deleteCmc, loading, error } = useCmcs();
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [editingCmc, setEditingCmc] = useState(null);
+  const [cmcs, setCmcs] = useState([]);
+  const [selectedCmc, setSelectedCmc] = useState(null);
+  const { loading, setLoading } = useCmcs();
+
   const { isDark, toggleTheme } = useTheme();
 
-  // Show login if not authenticated
-  if (!isAuthenticated) {
-    return <Login />;
-  }
+  const fetchCmcs = async () => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) return;
 
-  const handleAddCmc = async (cmcData) => {
-    const result = await addCmc(cmcData);
-    if (result?.success !== false) {
-      setShowAddModal(false);
-    } else {
-      alert(`Failed to add CMC: ${result.error}`);
+      const response = await fetch(`${API_BASE_URL}/api/cmcs`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCmcs(data);
+        
+        // If we had a selected CMC, update it with fresh data
+        if (selectedCmc) {
+          const updatedCmc = data.find(c => c.id === selectedCmc.id);
+          if (updatedCmc) {
+            setSelectedCmc(updatedCmc);
+          }
+        }
+      } else {
+        console.error('Failed to fetch CMCs:', response.status);
+      }
+    } catch (error) {
+      console.error('Error fetching CMCs:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleEditCmc = async (id, cmcData) => {
-    const result = await updateCmc(id, cmcData);
-    if (result?.success !== false) {
-      setEditingCmc(null);
+  useEffect(() => {
+    if (user) {
+      fetchCmcs();
     } else {
-      alert(`Failed to update CMC: ${result.error}`);
+      setLoading(false);
     }
+  }, [user]);
+
+  const handleAddCmc = async (formData) => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/api/cmcs`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(formData),
+      });
+
+      if (response.ok) {
+        const newCmc = await response.json();
+        await fetchCmcs();
+        setSelectedCmc(newCmc);
+        return { success: true };
+      } else {
+        const error = await response.json();
+        return { success: false, error: error.error || 'Failed to add CMC' };
+      }
+    } catch (error) {
+      console.error('Error adding CMC:', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const handleUpdateCmc = async (id, formData) => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/api/cmcs/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(formData),
+      });
+
+      if (response.ok) {
+        await fetchCmcs();
+        return { success: true };
+      } else {
+        const error = await response.json();
+        return { success: false, error: error.error || 'Failed to update CMC' };
+      }
+    } catch (error) {
+      console.error('Error updating CMC:', error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const handleEditClick = (cmc) => {
+    setEditingCmc(cmc);
+    setShowEditModal(true);
   };
 
   const handleDeleteCmc = async (id) => {
-    if (!confirm('Are you sure you want to delete this CMC?')) return;
-    
-    const result = await deleteCmc(id);
-    if (result?.success === false) {
-      alert(`Failed to delete CMC: ${result.error}`);
+    if (!confirm('Are you sure you want to delete this CMC?')) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/api/cmcs/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        if (selectedCmc?.id === id) {
+          setSelectedCmc(null);
+        }
+        await fetchCmcs();
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Failed to delete CMC');
+      }
+    } catch (error) {
+      console.error('Error deleting CMC:', error);
+      alert(error.message);
     }
   };
 
@@ -62,21 +163,9 @@ function AppContent() {
     );
   }
 
-  // Show error state
-  if (error) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-base-100">
-        <div className="alert alert-error max-w-md">
-          <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <div>
-            <h3 className="font-bold">Error</h3>
-            <div className="text-sm">{error}</div>
-          </div>
-        </div>
-      </div>
-    );
+  // Show login if not authenticated
+  if (!isAuthenticated || !user) {
+    return <Login />;
   }
 
   return (
@@ -146,9 +235,9 @@ function AppContent() {
             cmcs={cmcs}
             selectedCmc={selectedCmc}
             onSelectCmc={setSelectedCmc}
-            onEditCmc={(cmc) => setEditingCmc(cmc)}
+            onEditCmc={handleEditClick}
             onDeleteCmc={handleDeleteCmc}
-            readOnly={isGuest()}
+            isAdmin={isAdmin()}
           />
         </aside>
 
@@ -163,20 +252,21 @@ function AppContent() {
       </div>
 
       {/* Modals */}
-      {showAddModal && (
-        <AddCmcModal
-          onClose={() => setShowAddModal(false)}
-          onAdd={handleAddCmc}
-        />
-      )}
+      <AddCmcModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onAdd={handleAddCmc}
+      />
 
-      {editingCmc && (
-        <EditCmcModal
-          cmc={editingCmc}
-          onClose={() => setEditingCmc(null)}
-          onUpdate={handleEditCmc}
-        />
-      )}
+      <EditCmcModal
+        isOpen={showEditModal}
+        onClose={() => {
+          setShowEditModal(false);
+          setEditingCmc(null);
+        }}
+        onUpdate={handleUpdateCmc}
+        cmc={editingCmc}
+      />
     </div>
   );
 }

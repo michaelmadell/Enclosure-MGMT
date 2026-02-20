@@ -1,23 +1,26 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { API_BASE_URL } from '../config';
 
 const AuthContext = createContext(null);
-
-// Use HTTPS if backend has it enabled
-const API_BASE_URL = 'https://localhost:3001';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Load token from localStorage on mount
   useEffect(() => {
     const storedToken = localStorage.getItem('auth_token');
     const storedUser = localStorage.getItem('auth_user');
     
     if (storedToken && storedUser) {
       setToken(storedToken);
-      setUser(JSON.parse(storedUser));
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch (e) {
+        console.error('Failed to parse stored user:', e);
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('auth_user');
+      }
     }
     
     setLoading(false);
@@ -25,6 +28,9 @@ export function AuthProvider({ children }) {
 
   const login = async (username, password) => {
     try {
+      console.log('🔐 Attempting login to:', `${API_BASE_URL}/api/auth/login`);
+      console.log('📝 Login payload:', { username, password: '***' });
+      
       const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: {
@@ -33,13 +39,30 @@ export function AuthProvider({ children }) {
         body: JSON.stringify({ username, password }),
       });
 
+      console.log('📬 Login response status:', response.status);
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Login failed');
+        let errorMessage = 'Login failed';
+        try {
+          const error = await response.json();
+          errorMessage = error.error || error.message || errorMessage;
+        } catch (e) {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
+      console.log('✅ Login response data:', { ...data, token: data.token ? '***' : undefined });
       
+      if (!data.token) {
+        throw new Error('No token in response');
+      }
+
+      if (!data.user) {
+        throw new Error('No user in response');
+      }
+
       // Store token and user
       localStorage.setItem('auth_token', data.token);
       localStorage.setItem('auth_user', JSON.stringify(data.user));
@@ -47,23 +70,21 @@ export function AuthProvider({ children }) {
       setToken(data.token);
       setUser(data.user);
       
+      console.log('✅ Login successful');
       return { success: true };
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('❌ Login error:', error);
       return { success: false, error: error.message };
     }
   };
 
   const logout = () => {
-    // Clear local storage
     localStorage.removeItem('auth_token');
     localStorage.removeItem('auth_user');
     
-    // Clear state
     setToken(null);
     setUser(null);
 
-    // Optional: call logout endpoint
     if (token) {
       fetch(`${API_BASE_URL}/api/auth/logout`, {
         method: 'POST',

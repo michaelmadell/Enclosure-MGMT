@@ -27,6 +27,7 @@ import {
 import { auditMiddleware, auditCmcOperation } from './middleware/audit.js';
 import { encrypt, decrypt, maskSensitiveData } from './utils/encryption.js';
 import authRoutes from './routes/auth.js';
+import cmcProxyRoutes from './routes/cmcProxy.js';
 
 dotenv.config();
 
@@ -50,10 +51,19 @@ app.use(auditMiddleware);
 
 // Apply rate limiting
 app.use(rateLimiter);
-app.use('/api', apiRateLimiter);
 
-// Authentication routes (public)
+// Public routes (no authentication)
 app.use('/api/auth', authRoutes);
+
+// Health check (excluded from auth)
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: Date.now(),
+    environment: process.env.NODE_ENV || 'development',
+    https: USE_HTTPS,
+  });
+});
 
 // Helper function to encrypt/decrypt passwords if enabled
 const shouldEncrypt = process.env.ENCRYPT_PASSWORDS === 'true';
@@ -78,17 +88,10 @@ function decryptPassword(password) {
   return password;
 }
 
-// Health check (excluded from auth)
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    timestamp: Date.now(),
-    environment: process.env.NODE_ENV || 'development',
-    https: USE_HTTPS,
-  });
-});
+// Protected routes - require authentication
+// CMC Proxy route
+app.use('/api/cmc-proxy', authenticateToken, cmcProxyRoutes);
 
-// Protected CMC routes - require authentication
 // Get all CMCs (both admin and guest can view)
 app.get('/api/cmcs', authenticateToken, (req, res) => {
   try {

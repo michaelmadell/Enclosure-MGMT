@@ -1,19 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Power, RefreshCw, Zap, Lightbulb, Fan, Terminal, Radio } from 'lucide-react';
-import { performPowerAction, startBlink, setFanSpeed, toggleSsh, toggleSerial, fetchCoreState } from '../utils/api';
-import { confirmable, createConfirmation } from 'react-confirm';
+import { performPowerAction, startBlink, setFanSpeed, toggleSsh, toggleSerial, fetchCoreState } from '../utils/cmcDeviceApi';
 
-const PowerConfirm = ({show, proceed, message}) => (
-  <div className={`dialog-overlay ${show ? 'show' : 'hide'}`}>
-    <div className='dialog'>
-      <p>{message}</p>
-      <button onClick={() => proceed(true)}>Yes</button>
-      <button onClick={() => proceed(false)}>No</button>
-    </div>
-  </div>
-)
-
-export const ApiToolsPanel = ({ cmc }) => {
+export const ApiToolsPanel = ({ cmc, onActionComplete }) => {
   const [loading, setLoading] = useState(false);
   const [sshEnabled, setSshEnabled] = useState(null);
   const [serialEnabled, setSerialEnabled] = useState(null);
@@ -32,20 +21,23 @@ export const ApiToolsPanel = ({ cmc }) => {
       }
     };
     
-    loadState();
-  }, [cmc.id]);
+    if (cmc) {
+      loadState();
+    }
+  }, [cmc?.id]);
 
   const handlePowerAction = async (action) => {
-    setLoading(true);
-    const confirmation = await PowerConfirm({ message: `Are you sure you want to ${action.replace('-', ' ')}?`, show: true });
-    if (!confirmation) {
-      setLoading(false);
+    if (!confirm(`Are you sure you want to ${action.replace('-', ' ')}?`)) {
       return;
     }
+
+    setLoading(true);
     const result = await performPowerAction(cmc, action);
     setLoading(false);
+    
     if (result.success) {
       alert(`Power action '${action}' sent successfully`);
+      onActionComplete?.(action);
     } else {
       alert(`Failed to perform power action: ${result.error}`);
     }
@@ -55,8 +47,10 @@ export const ApiToolsPanel = ({ cmc }) => {
     setLoading(true);
     const result = await startBlink(cmc, 'enclosure', null, 60);
     setLoading(false);
+    
     if (result.success) {
       alert('LED blink started (60 seconds)');
+      onActionComplete?.('blink');
     } else {
       alert(`Failed to start blink: ${result.error}`);
     }
@@ -65,16 +59,20 @@ export const ApiToolsPanel = ({ cmc }) => {
   const handleFanSpeed = async () => {
     const speed = prompt('Enter fan speed (0-100):');
     if (speed === null) return;
+    
     const speedNum = parseInt(speed);
     if (isNaN(speedNum) || speedNum < 0 || speedNum > 100) {
       alert('Invalid fan speed. Must be 0-100.');
       return;
     }
+    
     setLoading(true);
     const result = await setFanSpeed(cmc, speedNum);
     setLoading(false);
+    
     if (result.success) {
       alert(`Fan speed set to ${speedNum}%`);
+      onActionComplete?.('fan-speed');
     } else {
       alert(`Failed to set fan speed: ${result.error}`);
     }
@@ -88,7 +86,7 @@ export const ApiToolsPanel = ({ cmc }) => {
     
     if (result.success) {
       setSshEnabled(newState);
-      alert(`SSH ${newState ? 'enabled' : 'disabled'} successfully`);
+      // Don't call onActionComplete for SSH toggle - modal should stay open
     } else {
       alert(`Failed to toggle SSH: ${result.error}`);
     }
@@ -102,59 +100,129 @@ export const ApiToolsPanel = ({ cmc }) => {
     
     if (result.success) {
       setSerialEnabled(newState);
-      alert(`Serial console ${newState ? 'enabled' : 'disabled'} successfully`);
+      // Don't call onActionComplete for Serial toggle - modal should stay open
     } else {
       alert(`Failed to toggle serial: ${result.error}`);
     }
   };
 
+  if (!cmc) return null;
+
   return (
-    <div className="p-4">
-      <div className="space-y-3">
-
-        {/* System Actions */}
-        <div>
-          <h4 className="text-xs font-medium text-base-content/40 mb-2">System Control</h4>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={handleBlink}
-              disabled={loading}
-              className="btn btn-info btn-sm gap-2"
-            >
-              <Lightbulb className="w-4 h-4" /> Blink LED
-            </button>
-          </div>
+    <div className="space-y-6">
+      {fetchingState && (
+        <div className="text-center py-8">
+          <span className="loading loading-spinner loading-lg text-primary"></span>
+          <p className="text-sm text-base-content/60 mt-2">Loading CMC state...</p>
         </div>
+      )}
 
-        {/* Access Control */}
-        <div>
-          <h4 className="text-xs font-medium text-base-content/40 mb-2">Access Control</h4>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={handleToggleSsh}
-              disabled={loading || fetchingState || sshEnabled === null}
-              className={`btn btn-sm gap-2 ${
-                sshEnabled ? 'btn-success' : 'btn-ghost'
-              }`}
-              title={sshEnabled ? 'SSH is enabled - click to disable' : 'SSH is disabled - click to enable'}
-            >
-              <Terminal className="w-4 h-4" />
-              SSH: {fetchingState ? '...' : sshEnabled ? 'Enabled' : 'Disabled'}
-            </button>
-            <button
-              onClick={handleToggleSerial}
-              disabled={loading || fetchingState || serialEnabled === null}
-              className={`btn btn-sm gap-2 ${
-                serialEnabled ? 'btn-success' : 'btn-ghost'
-              }`}
-              title={serialEnabled ? 'Serial is enabled - click to disable' : 'Serial is disabled - click to enable'}
-            >
-              <Radio className="w-4 h-4" />
-              Serial: {fetchingState ? '...' : serialEnabled ? 'Enabled' : 'Disabled'}
-            </button>
+      {!fetchingState && (
+        <>
+          {/* Power Actions */}
+          <div className="card bg-base-200">
+            <div className="card-body">
+              <h4 className="font-semibold text-base mb-3 flex items-center gap-2">
+                <Power className="w-5 h-5" />
+                Power Control
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => handlePowerAction('power-on')}
+                  className="btn btn-sm btn-success gap-2"
+                  disabled={loading}
+                >
+                  <Power className="w-4 h-4" />
+                  Power On
+                </button>
+                <button
+                  onClick={() => handlePowerAction('power-off')}
+                  className="btn btn-sm btn-error gap-2"
+                  disabled={loading}
+                >
+                  <Power className="w-4 h-4" />
+                  Power Off
+                </button>
+                <button
+                  onClick={() => handlePowerAction('power-cycle')}
+                  className="btn btn-sm btn-warning gap-2"
+                  disabled={loading}
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Power Cycle
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+
+          {/* LED Blink */}
+          <div className="card bg-base-200">
+            <div className="card-body">
+              <h4 className="font-semibold text-base mb-3 flex items-center gap-2">
+                <Lightbulb className="w-5 h-5" />
+                LED Control
+              </h4>
+              <button
+                onClick={handleBlink}
+                className="btn btn-sm btn-outline gap-2"
+                disabled={loading}
+              >
+                <Lightbulb className="w-4 h-4" />
+                Start Blink (60s)
+              </button>
+            </div>
+          </div>
+
+          {/* Fan Control */}
+          <div className="card bg-base-200">
+            <div className="card-body">
+              <h4 className="font-semibold text-base mb-3 flex items-center gap-2">
+                <Fan className="w-5 h-5" />
+                Fan Control
+              </h4>
+              <button
+                onClick={handleFanSpeed}
+                className="btn btn-sm btn-outline gap-2"
+                disabled={loading}
+              >
+                <Fan className="w-4 h-4" />
+                Set Fan Speed
+              </button>
+            </div>
+          </div>
+
+          {/* SSH/Serial */}
+          <div className="card bg-base-200">
+            <div className="card-body">
+              <h4 className="font-semibold text-base mb-3 flex items-center gap-2">
+                <Terminal className="w-5 h-5" />
+                Access Control
+              </h4>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={handleToggleSsh}
+                  className={`btn btn-sm gap-2 ${sshEnabled ? 'btn-success' : 'btn-outline'}`}
+                  disabled={loading || sshEnabled === null}
+                >
+                  <Terminal className="w-4 h-4" />
+                  SSH {sshEnabled ? 'Enabled' : 'Disabled'}
+                </button>
+                <button
+                  onClick={handleToggleSerial}
+                  className={`btn btn-sm gap-2 ${serialEnabled ? 'btn-success' : 'btn-outline'}`}
+                  disabled={loading || serialEnabled === null}
+                >
+                  <Radio className="w-4 h-4" />
+                  Serial {serialEnabled ? 'Enabled' : 'Disabled'}
+                </button>
+              </div>
+              <p className="text-xs text-base-content/60 mt-2">
+                Toggle access methods - modal stays open for multiple changes
+              </p>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

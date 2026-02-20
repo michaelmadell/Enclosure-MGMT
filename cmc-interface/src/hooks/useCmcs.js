@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-
-const API_BASE_URL = 'https://localhost:3001/api';
+import { API_BASE_URL } from '../config';
 
 export function useCmcs() {
   const [cmcs, setCmcs] = useState([]);
@@ -10,9 +9,10 @@ export function useCmcs() {
   const [error, setError] = useState(null);
   const { token, logout } = useAuth();
 
-  // Helper to make authenticated requests
   const fetchWithAuth = async (url, options = {}) => {
     try {
+      console.log('📡 API Request:', url);
+      
       const response = await fetch(url, {
         ...options,
         headers: {
@@ -22,14 +22,13 @@ export function useCmcs() {
         },
       });
 
-      // Handle unauthorized
       if (response.status === 401) {
         logout();
         throw new Error('Session expired. Please login again.');
       }
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `HTTP ${response.status}`);
       }
 
@@ -40,7 +39,6 @@ export function useCmcs() {
     }
   };
 
-  // Fetch all CMCs
   const fetchCmcs = async () => {
     if (!token) {
       setLoading(false);
@@ -51,10 +49,10 @@ export function useCmcs() {
       setLoading(true);
       setError(null);
       
-      const data = await fetchWithAuth(`${API_BASE_URL}/cmcs`);
+      // Use API_BASE_URL + /api/cmcs
+      const data = await fetchWithAuth(`${API_BASE_URL}/api/cmcs`);
       setCmcs(data);
       
-      // Select first CMC if none selected
       if (data.length > 0 && !selectedCmc) {
         setSelectedCmc(data[0]);
       }
@@ -70,10 +68,9 @@ export function useCmcs() {
     fetchCmcs();
   }, [token]);
 
-  // Add CMC
   const addCmc = async (cmcData) => {
     try {
-      const data = await fetchWithAuth(`${API_BASE_URL}/cmcs`, {
+      const data = await fetchWithAuth(`${API_BASE_URL}/api/cmcs`, {
         method: 'POST',
         body: JSON.stringify(cmcData),
       });
@@ -87,10 +84,9 @@ export function useCmcs() {
     }
   };
 
-  // Update CMC
   const updateCmc = async (id, cmcData) => {
     try {
-      const data = await fetchWithAuth(`${API_BASE_URL}/cmcs/${id}`, {
+      const data = await fetchWithAuth(`${API_BASE_URL}/api/cmcs/${id}`, {
         method: 'PUT',
         body: JSON.stringify(cmcData),
       });
@@ -107,10 +103,9 @@ export function useCmcs() {
     }
   };
 
-  // Delete CMC
   const deleteCmc = async (id) => {
     try {
-      await fetchWithAuth(`${API_BASE_URL}/cmcs/${id}`, {
+      await fetchWithAuth(`${API_BASE_URL}/api/cmcs/${id}`, {
         method: 'DELETE',
       });
 
