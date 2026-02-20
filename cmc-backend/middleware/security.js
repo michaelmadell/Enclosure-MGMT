@@ -9,9 +9,8 @@ export const rateLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // Limit each IP to 100 requests per windowMs
   message: 'Too many requests from this IP, please try again later.',
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  // Skip rate limiting for health checks
+  standardHeaders: true,
+  legacyHeaders: false,
   skip: (req) => req.path === '/health',
 });
 
@@ -25,6 +24,16 @@ export const apiRateLimiter = rateLimit({
 });
 
 /**
+ * Auth-specific rate limiter (very strict)
+ */
+export const authRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Only 5 login attempts per 15 minutes
+  message: 'Too many login attempts, please try again later.',
+  skipSuccessfulRequests: true,
+});
+
+/**
  * Security headers middleware using Helmet
  */
 export const securityHeaders = helmet({
@@ -34,6 +43,11 @@ export const securityHeaders = helmet({
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'"],
       imgSrc: ["'self'", 'data:', 'https:'],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
     },
   },
   hsts: {
@@ -41,7 +55,33 @@ export const securityHeaders = helmet({
     includeSubDomains: true,
     preload: true,
   },
+  noSniff: true,
+  xssFilter: true,
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 });
+
+/**
+ * CORS options
+ */
+export const corsOptions = {
+  origin: function (origin, callback) {
+    const allowedOrigins = process.env.CORS_ORIGIN 
+      ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+      : ['http://localhost:5173', 'http://localhost:3000'];
+    
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
 
 /**
  * Input sanitization middleware
@@ -55,7 +95,8 @@ export const sanitizeInput = (req, res, next) => {
         obj[key] = obj[key]
           .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
           .replace(/javascript:/gi, '')
-          .replace(/on\w+\s*=/gi, '');
+          .replace(/on\w+\s*=/gi, '')
+          .trim();
       } else if (typeof obj[key] === 'object' && obj[key] !== null) {
         sanitize(obj[key]);
       }
@@ -104,23 +145,16 @@ export const validateCmcData = (req, res, next) => {
   }
 
   // Validate username length
-  if (username.length < 1 || username.length > 100) {
+  if (username.length < 1 || username.length > 50) {
     return res.status(400).json({
-      error: 'Username must be between 1 and 100 characters',
+      error: 'Username must be between 1 and 50 characters',
     });
   }
 
   // Validate password length
-  if (password.length < 1 || password.length > 255) {
+  if (password.length < 1 || password.length > 100) {
     return res.status(400).json({
-      error: 'Password must be between 1 and 255 characters',
-    });
-  }
-
-  // Validate notes length if provided
-  if (req.body.notes && req.body.notes.length > 1000) {
-    return res.status(400).json({
-      error: 'Notes must be less than 1000 characters',
+      error: 'Password must be between 1 and 100 characters',
     });
   }
 
@@ -128,65 +162,36 @@ export const validateCmcData = (req, res, next) => {
 };
 
 /**
- * Error handling middleware
+ * Request logger middleware
+ */
+export const requestLogger = (req, res, next) => {
+  const start = Date.now();
+  
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    const logLevel = res.statusCode >= 400 ? '❌' : '✅';
+    console.log(`${logLevel} ${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`);
+  });
+  
+  next();
+};
+
+/**
+ * Error handler middleware
  */
 export const errorHandler = (err, req, res, next) => {
   console.error('Error:', err);
 
-  // Don't leak error details in production
-  const isDevelopment = process.env.NODE_ENV === 'development';
+  if (err.name === 'UnauthorizedError') {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
 
-  res.status(err.status || 500).json({
-    error: isDevelopment ? err.message : 'Internal server error',
-    ...(isDevelopment && { stack: err.stack }),
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Invalid JSON' });
+  }
+
+  res.status(500).json({ 
+    error: 'Internal server error',
+    message: process.env.NODE_ENV === 'development' ? err.message : undefined
   });
-};
-
-/**
- * Request logging middleware
- */
-export const requestLogger = (req, res, next) => {
-  const start = Date.now();
-
-  res.on('finish', () => {
-    const duration = Date.now() - start;
-    const logLevel = res.statusCode >= 400 ? 'ERROR' : 'INFO';
-    
-    console.log(
-      `[${logLevel}] ${new Date().toISOString()} ${req.method} ${req.path} ${res.statusCode} ${duration}ms`
-    );
-  });
-
-  next();
-};
-
-/**
- * CORS configuration with dynamic origin
- */
-export const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin) return callback(null, true);
-
-    const allowedOrigins = process.env.CORS_ORIGIN
-      ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
-      : ['http://localhost:5173'];
-
-    // Allow all origins in development or if wildcard is set
-    if (
-      process.env.NODE_ENV === 'development' ||
-      allowedOrigins.includes('*')
-    ) {
-      return callback(null, true);
-    }
-
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
 };

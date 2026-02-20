@@ -53,3 +53,19 @@ Thumbs.db
 
 # PM2
 .pm2/
+
+*.env
+*.env.local
+
+*.pem
+
+cmc-manager.db*
+
+node_modules/
+dist/
+build/
+coverage/
+.nyc_output/
+.cache/
+.vscode/
+.idea/

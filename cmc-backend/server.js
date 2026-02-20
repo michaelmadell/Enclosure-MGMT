@@ -1,5 +1,11 @@
 import express from 'express';
+import https from 'https';
+import http from 'http';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import cors from 'cors';
+import dotenv from 'dotenv';
 import { statements } from './database.js';
 import { randomBytes } from 'crypto';
 import { networkInterfaces } from 'os';
@@ -13,10 +19,23 @@ import {
   requestLogger,
   corsOptions,
 } from './middleware/security.js';
+import { 
+  authenticateToken, 
+  requireWritePermission, 
+  requireAdmin 
+} from './middleware/auth.js';
+import { auditMiddleware, auditCmcOperation } from './middleware/audit.js';
 import { encrypt, decrypt, maskSensitiveData } from './utils/encryption.js';
+import authRoutes from './routes/auth.js';
+
+dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const USE_HTTPS = process.env.USE_HTTPS === 'true';
 
 // Trust proxy (for rate limiting behind reverse proxy)
 app.set('trust proxy', 1);
@@ -27,10 +46,14 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(sanitizeInput);
 app.use(requestLogger);
+app.use(auditMiddleware);
 
 // Apply rate limiting
 app.use(rateLimiter);
 app.use('/api', apiRateLimiter);
+
+// Authentication routes (public)
+app.use('/api/auth', authRoutes);
 
 // Helper function to encrypt/decrypt passwords if enabled
 const shouldEncrypt = process.env.ENCRYPT_PASSWORDS === 'true';
@@ -55,17 +78,19 @@ function decryptPassword(password) {
   return password;
 }
 
-// Health check (excluded from rate limiting)
+// Health check (excluded from auth)
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: Date.now(),
     environment: process.env.NODE_ENV || 'development',
+    https: USE_HTTPS,
   });
 });
 
-// Get all CMCs
-app.get('/api/cmcs', (req, res) => {
+// Protected CMC routes - require authentication
+// Get all CMCs (both admin and guest can view)
+app.get('/api/cmcs', authenticateToken, (req, res) => {
   try {
     const cmcs = statements.getAllCmcs.all();
     
@@ -75,7 +100,6 @@ app.get('/api/cmcs', (req, res) => {
       password: decryptPassword(cmc.password),
     }));
 
-    // Log request (with masked data)
     console.log('Fetched CMCs:', decryptedCmcs.map(maskSensitiveData));
 
     res.json(decryptedCmcs);
@@ -85,8 +109,8 @@ app.get('/api/cmcs', (req, res) => {
   }
 });
 
-// Get single CMC by ID
-app.get('/api/cmcs/:id', (req, res) => {
+// Get single CMC by ID (both admin and guest can view)
+app.get('/api/cmcs/:id', authenticateToken, (req, res) => {
   try {
     const cmc = statements.getCmcById.get(req.params.id);
     if (!cmc) {
@@ -104,8 +128,8 @@ app.get('/api/cmcs/:id', (req, res) => {
   }
 });
 
-// Create new CMC
-app.post('/api/cmcs', validateCmcData, (req, res) => {
+// Create new CMC (admin only)
+app.post('/api/cmcs', authenticateToken, requireWritePermission, validateCmcData, (req, res) => {
   try {
     const { name, address, username, password, notes } = req.body;
 
@@ -121,15 +145,23 @@ app.post('/api/cmcs', validateCmcData, (req, res) => {
       address,
       username,
       encryptedPassword,
-      notes || '',
+      notes || null,
       now,
       now
     );
 
-    const newCmc = statements.getCmcById.get(id);
-    
-    // Decrypt for response
-    newCmc.password = decryptPassword(newCmc.password);
+    auditCmcOperation('create', id, name, req.user);
+
+    const newCmc = {
+      id,
+      name,
+      address,
+      username,
+      password, // Return unencrypted for client
+      notes,
+      created_at: now,
+      updated_at: now,
+    };
 
     console.log('Created CMC:', maskSensitiveData(newCmc));
     res.status(201).json(newCmc);
@@ -139,11 +171,11 @@ app.post('/api/cmcs', validateCmcData, (req, res) => {
   }
 });
 
-// Update CMC
-app.put('/api/cmcs/:id', validateCmcData, (req, res) => {
+// Update CMC (admin only)
+app.put('/api/cmcs/:id', authenticateToken, requireWritePermission, validateCmcData, (req, res) => {
   try {
-    const { id } = req.params;
     const { name, address, username, password, notes } = req.body;
+    const { id } = req.params;
 
     const existing = statements.getCmcById.get(id);
     if (!existing) {
@@ -151,8 +183,6 @@ app.put('/api/cmcs/:id', validateCmcData, (req, res) => {
     }
 
     const now = Date.now();
-
-    // Encrypt password if enabled
     const encryptedPassword = encryptPassword(password);
 
     statements.updateCmc.run(
@@ -160,15 +190,23 @@ app.put('/api/cmcs/:id', validateCmcData, (req, res) => {
       address,
       username,
       encryptedPassword,
-      notes || '',
+      notes || null,
       now,
       id
     );
 
-    const updated = statements.getCmcById.get(id);
-    
-    // Decrypt for response
-    updated.password = decryptPassword(updated.password);
+    auditCmcOperation('update', id, name, req.user);
+
+    const updated = {
+      id,
+      name,
+      address,
+      username,
+      password,
+      notes,
+      created_at: existing.created_at,
+      updated_at: now,
+    };
 
     console.log('Updated CMC:', maskSensitiveData(updated));
     res.json(updated);
@@ -178,66 +216,86 @@ app.put('/api/cmcs/:id', validateCmcData, (req, res) => {
   }
 });
 
-// Delete CMC
-app.delete('/api/cmcs/:id', (req, res) => {
+// Delete CMC (admin only)
+app.delete('/api/cmcs/:id', authenticateToken, requireWritePermission, (req, res) => {
   try {
     const { id } = req.params;
-
-    const existing = statements.getCmcById.get(id);
-    if (!existing) {
+    const cmc = statements.getCmcById.get(id);
+    
+    if (!cmc) {
       return res.status(404).json({ error: 'CMC not found' });
     }
 
     statements.deleteCmc.run(id);
+    
+    auditCmcOperation('delete', id, cmc.name, req.user);
+    
     console.log('Deleted CMC:', id);
-    res.status(204).send();
+    res.json({ message: 'CMC deleted successfully' });
   } catch (error) {
     console.error('Error deleting CMC:', error);
     res.status(500).json({ error: 'Failed to delete CMC' });
   }
 });
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Endpoint not found' });
-});
-
 // Error handler (must be last)
 app.use(errorHandler);
 
-// Get network IP for LAN access
-function getNetworkIP() {
-  const nets = networkInterfaces();
-  for (const name of Object.keys(nets)) {
-    for (const net of nets[name]) {
-      if (net.family === 'IPv4' && !net.internal) {
-        return net.address;
-      }
+// Create HTTPS or HTTP server
+let server;
+
+if (USE_HTTPS) {
+  try {
+    const certPath = join(__dirname, 'certs', 'server-cert.pem');
+    const keyPath = join(__dirname, 'certs', 'server-key.pem');
+
+    if (!fs.existsSync(certPath) || !fs.existsSync(keyPath)) {
+      console.error('❌ SSL certificates not found. Run: npm run generate-cert');
+      process.exit(1);
     }
+
+    const options = {
+      key: fs.readFileSync(keyPath),
+      cert: fs.readFileSync(certPath),
+    };
+
+    server = https.createServer(options, app);
+    console.log('🔒 HTTPS enabled');
+  } catch (error) {
+    console.error('❌ Failed to setup HTTPS:', error.message);
+    process.exit(1);
   }
-  return 'localhost';
+} else {
+  server = http.createServer(app);
+  console.log('⚠️  Running in HTTP mode (set USE_HTTPS=true for HTTPS)');
 }
 
-// Start server
-const networkIP = getNetworkIP();
-app.listen(PORT, () => {
-  console.log('╔════════════════════════════════════════╗');
-  console.log('║    CMC Manager API Server              ║');
-  console.log('╚════════════════════════════════════════╝');
-  console.log('');
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`Local:   http://localhost:${PORT}/api`);
-  console.log(`Network: http://${networkIP}:${PORT}/api`);
-  console.log(`Health:  http://${networkIP}:${PORT}/health`);
-  console.log('');
-  console.log('Security Features:');
-  console.log(`  - Rate Limiting: ${process.env.RATE_LIMIT_MAX_REQUESTS || 100} requests per ${(parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000) / 60000} minutes`);
-  console.log(`  - Password Encryption: ${shouldEncrypt ? 'Enabled' : 'Disabled'}`);
-  console.log(`  - CORS: ${process.env.CORS_ORIGIN || '*'}`);
-  console.log('');
-  console.log('To access from other devices on LAN:');
-  console.log(`  Update frontend .env: VITE_API_URL=http://${networkIP}:${PORT}/api`);
-  console.log('');
+server.listen(PORT, () => {
+  const protocol = USE_HTTPS ? 'https' : 'http';
+  const interfaces = networkInterfaces();
+  const addresses = [];
+
+  Object.keys(interfaces).forEach((name) => {
+    interfaces[name].forEach((iface) => {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        addresses.push(iface.address);
+      }
+    });
+  });
+
+  console.log('\n🚀 CMC Manager API Server (Secure)');
+  console.log('─────────────────────────────────');
+  console.log(`Local:   ${protocol}://localhost:${PORT}/api`);
+  if (addresses.length > 0) {
+    console.log(`Network: ${protocol}://${addresses[0]}:${PORT}/api`);
+  }
+  console.log(`Health:  ${protocol}://localhost:${PORT}/health`);
+  console.log('─────────────────────────────────');
+  console.log('🔐 Authentication enabled');
+  console.log('👤 Default credentials:');
+  console.log('   Admin - username: admin, password: admin123');
+  console.log('   Guest - username: guest, password: guest123');
+  console.log('─────────────────────────────────\n');
 });
 
 export default app;

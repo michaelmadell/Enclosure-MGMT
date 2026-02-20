@@ -1,92 +1,108 @@
 import { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = 'https://localhost:3001/api';
 
-export const useCmcs = () => {
+export function useCmcs() {
   const [cmcs, setCmcs] = useState([]);
   const [selectedCmc, setSelectedCmc] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const { token, logout } = useAuth();
 
-  // Fetch all CMCs from API
+  // Helper to make authenticated requests
+  const fetchWithAuth = async (url, options = {}) => {
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          ...options.headers,
+        },
+      });
+
+      // Handle unauthorized
+      if (response.status === 401) {
+        logout();
+        throw new Error('Session expired. Please login again.');
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (err) {
+      console.error('API Error:', err);
+      throw err;
+    }
+  };
+
+  // Fetch all CMCs
   const fetchCmcs = async () => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`${API_BASE}/cmcs`);
       
-      if (!response.ok) {
-        throw new Error(`Failed to fetch CMCs: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
+      const data = await fetchWithAuth(`${API_BASE_URL}/cmcs`);
       setCmcs(data);
       
-      // If a CMC was selected, update it with fresh data
-      if (selectedCmc) {
-        const updatedSelected = data.find(c => c.id === selectedCmc.id);
-        setSelectedCmc(updatedSelected || null);
+      // Select first CMC if none selected
+      if (data.length > 0 && !selectedCmc) {
+        setSelectedCmc(data[0]);
       }
     } catch (err) {
-      console.error('Error fetching CMCs:', err);
       setError(err.message);
+      setCmcs([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Load CMCs on mount
   useEffect(() => {
     fetchCmcs();
-  }, []);
+  }, [token]);
 
-  // Add new CMC
+  // Add CMC
   const addCmc = async (cmcData) => {
     try {
-      const response = await fetch(`${API_BASE}/cmcs`, {
+      const data = await fetchWithAuth(`${API_BASE_URL}/cmcs`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cmcData)
+        body: JSON.stringify(cmcData),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create CMC');
-      }
-
-      const newCmc = await response.json();
-      setCmcs(prev => [...prev, newCmc]);
-      return { success: true, cmc: newCmc };
+      setCmcs(prev => [...prev, data]);
+      setSelectedCmc(data);
+      
+      return { success: true };
     } catch (err) {
-      console.error('Error adding CMC:', err);
       return { success: false, error: err.message };
     }
   };
 
-  // Update existing CMC
+  // Update CMC
   const updateCmc = async (id, cmcData) => {
     try {
-      const response = await fetch(`${API_BASE}/cmcs/${id}`, {
+      const data = await fetchWithAuth(`${API_BASE_URL}/cmcs/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cmcData)
+        body: JSON.stringify(cmcData),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update CMC');
-      }
-
-      const updated = await response.json();
-      setCmcs(prev => prev.map(c => c.id === id ? updated : c));
+      setCmcs(prev => prev.map(cmc => cmc.id === id ? data : cmc));
       
       if (selectedCmc?.id === id) {
-        setSelectedCmc(updated);
+        setSelectedCmc(data);
       }
-
-      return { success: true, cmc: updated };
+      
+      return { success: true };
     } catch (err) {
-      console.error('Error updating CMC:', err);
       return { success: false, error: err.message };
     }
   };
@@ -94,30 +110,20 @@ export const useCmcs = () => {
   // Delete CMC
   const deleteCmc = async (id) => {
     try {
-      const response = await fetch(`${API_BASE}/cmcs/${id}`, {
-        method: 'DELETE'
+      await fetchWithAuth(`${API_BASE_URL}/cmcs/${id}`, {
+        method: 'DELETE',
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to delete CMC');
-      }
-
-      setCmcs(prev => prev.filter(c => c.id !== id));
+      setCmcs(prev => prev.filter(cmc => cmc.id !== id));
       
       if (selectedCmc?.id === id) {
-        setSelectedCmc(null);
+        setSelectedCmc(cmcs[0] || null);
       }
-
+      
       return { success: true };
     } catch (err) {
-      console.error('Error deleting CMC:', err);
       return { success: false, error: err.message };
     }
-  };
-
-  // Refresh CMCs from API
-  const refreshCmcs = () => {
-    fetchCmcs();
   };
 
   return {
@@ -127,8 +133,8 @@ export const useCmcs = () => {
     addCmc,
     updateCmc,
     deleteCmc,
-    refreshCmcs,
     loading,
-    error
+    error,
+    refetch: fetchCmcs,
   };
-};
+}
