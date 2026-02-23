@@ -27,6 +27,7 @@ import {
 import { auditMiddleware, auditCmcOperation } from './middleware/audit.js';
 import { encrypt, decrypt, maskSensitiveData } from './utils/encryption.js';
 import authRoutes from './routes/auth.js';
+import cmcProxyRoutes from './routes/cmcProxy.js';
 
 dotenv.config();
 
@@ -54,6 +55,9 @@ app.use('/api', apiRateLimiter);
 
 // Authentication routes (public)
 app.use('/api/auth', authRoutes);
+
+// CMC proxy routes (protected)
+app.use('/api/cmc-proxy', authenticateToken, cmcProxyRoutes);
 
 // Helper function to encrypt/decrypt passwords if enabled
 const shouldEncrypt = process.env.ENCRYPT_PASSWORDS === 'true';

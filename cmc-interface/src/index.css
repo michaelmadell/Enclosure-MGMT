@@ -2,7 +2,6 @@
 @plugin "daisyui";
 
 
-
 @plugin "daisyui/theme" {
   name: "light";
   default: true;
@@ -74,6 +73,20 @@
   --noise: 0;
 }
 
+.loader {
+    width: 15px;
+    height: 15px;
+    display: inline-block;
+    position: relative;
+    border: 2px solid;
+    border-color: var(--color-base-300) var(--color-blue-400) var(--color-base-300) var(--color-blue-400);
+    border-radius: 50%;
+    box-sizing: border-box;
+    animation: 1s rotate linear infinite;
+ }
+   @keyframes rotate {
+    100%{    transform: rotate(360deg)}
+  }
 
 /* Custom scrollbar for dark theme */
 ::-webkit-scrollbar {

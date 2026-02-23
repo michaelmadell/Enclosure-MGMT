@@ -3,7 +3,7 @@ import { Sun, Moon } from 'lucide-react';
 
 export const ThemeToggle = ({ isDark, onToggle }) => {
   return (
-    <label className="flex items-center gap-2 cursor-pointer select-none group btn btn-secondary px-5 py-2">
+    <label className="flex items-center gap-2 cursor-pointer text-base-content select-none group btn btn-secondary px-5 py-2">
       {/* Sun icon */}
       <Sun
         className={`w-4 h-4 transition-colors text-base-content group-data-[state=checked]:text-gray-400`}
@@ -12,7 +12,7 @@ export const ThemeToggle = ({ isDark, onToggle }) => {
       {/* DaisyUI toggle */}
       <input
         type="checkbox"
-        className="toggle toggle-sm text-base-content"
+        className="toggle toggle-sm bg-base-300 border-base-content/50 "
         checked={isDark}
         onChange={onToggle}
         aria-label="Toggle dark mode"

@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 const AuthContext = createContext(null);
 
 // Use HTTPS if backend has it enabled
-const API_BASE_URL = 'https://localhost:3001';
+const API_BASE_URL = 'http://localhost:3001';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);

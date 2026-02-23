@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
-const API_BASE_URL = 'https://localhost:3001/api';
+const API_BASE_URL = 'http://localhost:3001/api';
 
 export function useCmcs() {
   const [cmcs, setCmcs] = useState([]);

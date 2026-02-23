@@ -4,7 +4,7 @@ import { ApiToolsPanel } from './ApiToolsPanel.tsx';
 import { EventsPanel } from './EventsPanel';
 import { FirmwarePanel } from './FirmwarePanel';
 import { TokenStatus } from './TokenStatus';
-import { fetchEvents, fetchFirmwareHistory } from '../utils/api';
+import { fetchEvents, fetchFirmwareHistory } from '../utils/cmcDeviceApi.js';
 
 export const CmcViewer = ({ cmc }) => {
   const [activePanel, setActivePanel] = useState(null);
@@ -95,14 +95,12 @@ export const CmcViewer = ({ cmc }) => {
       {/* Toolbar */}
       <div className="bg-base-200 border-b border-base-300 px-4 sm:px-6 py-3 flex-shrink-0">
         <div className="flex items-center justify-between gap-4">
-          <div className="min-w-0">
+          <div className="min-w-0 flex gap-5 flex-row">
             <h2 className="text-lg font-semibold text-base-content truncate">{cmc.name}</h2>
-            <div className="flex items-center gap-2 sm:gap-4 mt-1 flex-wrap">
-              <p className="text-xs text-base-content/50 truncate">{cmc.address}</p>
+              <button><p className="text-sm text-base-content/50 truncate">{cmc.address}</p></button>
               <TokenStatus cmc={cmc} />
-            </div>
           </div>
-          <div className="flex gap-1 sm:gap-2 flex-shrink-0 flex-wrap justify-end">
+          <div className="flex bg-base-100 p-1 rounded-sm shadow-sm gap-1 sm:gap-2 flex-shrink-0 flex-wrap justify-end">
             <button
               onClick={toggleApiTools}
               className={`btn btn-sm gap-1 sm:gap-2 ${activePanel === 'api' ? 'btn-primary' : 'btn-ghost'}`}
@@ -128,14 +126,6 @@ export const CmcViewer = ({ cmc }) => {
             >
               <Package className={`w-4 h-4 ${loadingFirmware ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">Firmware</span>
-            </button>
-            <button
-              onClick={toggleAutoLogin}
-              className={`btn btn-sm gap-1 sm:gap-2 ${autoLogin ? 'btn-success' : 'btn-ghost'}`}
-              title={autoLogin ? 'Auto-Login Enabled' : 'Auto-Login Disabled'}
-            >
-              {autoLogin ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-              <span className="hidden lg:inline">{autoLogin ? 'Auto' : 'Manual'}</span>
             </button>
             <button
               onClick={handleRefreshIframe}

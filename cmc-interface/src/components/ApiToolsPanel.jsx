@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Power, RefreshCw, Zap, Lightbulb, Fan, Terminal, Radio } from 'lucide-react';
-import { performPowerAction, startBlink, setFanSpeed, toggleSsh, toggleSerial, fetchCoreState } from '../utils/api';
+import { performPowerAction, startBlink, setFanSpeed, toggleSsh, toggleSerial, fetchCoreState } from '../utils/cmcDeviceApi';
 import { confirmable, createConfirmation } from 'react-confirm';
 
 const PowerConfirm = ({show, proceed, message}) => (

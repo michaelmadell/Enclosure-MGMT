@@ -3,7 +3,7 @@ import { Monitor, Trash2, Edit } from 'lucide-react';
 
 export const CmcSidebar = ({ cmcs, selectedCmc, onSelectCmc, onDeleteCmc, onEditCmc }) => {
   return (
-    <div className="w-80 bg-base-200 border-r border-base-300 overflow-y-auto flex-shrink-0">
+    <div className="w-80 bg-gradient-to-br from-base-200 to-base-300 border-r border-base-300 overflow-y-auto flex-shrink-0">
       <div className="p-4">
         <h2 className="text-xs font-semibold text-base-content/50 uppercase tracking-wider mb-3">
           Enclosures
@@ -16,7 +16,7 @@ export const CmcSidebar = ({ cmcs, selectedCmc, onSelectCmc, onDeleteCmc, onEdit
             <p className="text-xs mt-1">Click "Add CMC" to get started</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-2 w-full">
             {cmcs.map(cmc => (
               <CmcCard
                 key={cmc.id}
@@ -50,7 +50,7 @@ const CmcCard = ({ cmc, isSelected, onSelect, onEdit, onDelete }) => {
   return (
     <div
       onClick={onSelect}
-      className={`p-3 rounded-lg cursor-pointer transition-all ${
+      className={`p-3 card hover:scale-105 hover:shadow-lg rounded-lg cursor-pointer transition-all ${
         isSelected
           ? 'bg-accent text-accent-content shadow-lg'
           : 'bg-base-300 hover:bg-base-300/70'

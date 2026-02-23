@@ -80,21 +80,22 @@ function AppContent() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-base-200">
+    <div className="h-screen flex flex-col bg-base-200 ">
       {/* Header */}
-      <header className="bg-base-100 border-b border-base-300 px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+      <header className="bg-base-100 border-b border-base-300 px-4 py-3 w-full">
+        <div className="navbar flex flex-none py-0 items-center justify-between">
+          <div className="flex flex-1 items-center gap-3">
             <Server className="w-6 h-6 text-primary" />
             <div>
               <h1 className="text-xl font-bold text-base-content">CMC Central Manager</h1>
               <p className="text-xs text-base-content/60">Manage multiple CMCs from one interface</p>
             </div>
           </div>
-          
+          <div className='flex flex-none justify-end items-end menu menu-horizontal'>
+            
           <div className="flex items-center gap-2">
             {/* User Info */}
-            <div className="flex items-center gap-2 px-3 py-2 bg-base-200 rounded-lg">
+            <div className="btn-sm mx-2 px-5 flex items-center gap-2 px-3 py-2 bg-base-200 rounded-lg">
               {isAdmin() ? (
                 <Shield className="w-4 h-4 text-primary" />
               ) : (
@@ -112,12 +113,13 @@ function AppContent() {
             {/* Logout Button */}
             <button
               onClick={logout}
-              className="btn btn-ghost btn-sm gap-2"
+              className="btn btn-ghost gap-2"
               title="Logout"
             >
               <LogOut className="w-4 h-4" />
               <span className="hidden sm:inline">Logout</span>
             </button>
+          </div>
           </div>
         </div>
       </header>

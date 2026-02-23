@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff, CheckCircle, XCircle, Loader, Plus } from 'lucide-react';
-import { buildApiUrl } from '../utils/proxy';
+
+const API_BASE_URL = 'http://localhost:3001';
 
 export const AddCmcModal = ({ onAdd, onClose }) => {
   const [formData, setFormData] = useState({
@@ -34,15 +35,32 @@ export const AddCmcModal = ({ onAdd, onClose }) => {
     setTestStatus('testing');
     setTestMessage('Testing authentication...');
     try {
-      const url = buildApiUrl(formData.address, '/api/auth/token');
-      const response = await fetch(url, {
+      // Route through the backend proxy so the browser never touches the
+      // CMC directly — avoids CORS errors and self-signed cert rejections.
+      const authToken = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/api/cmc-proxy`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: formData.username, password: formData.password })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          cmcAddress: formData.address,
+          endpoint: '/api/auth/token',
+          method: 'POST',
+          cmcUsername: formData.username,
+          cmcPassword: formData.password,
+        }),
       });
-      if (!response.ok) throw new Error(`Authentication failed: ${response.status} ${response.statusText}`);
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || `Authentication failed: ${response.status} ${response.statusText}`);
+      }
+
       const data = await response.json();
       if (!data.accessToken) throw new Error('No access token received');
+
       setTestStatus('success');
       setTestMessage('Authentication successful! Credentials are valid.');
     } catch (error) {

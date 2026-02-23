@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LogIn, Shield, Eye, EyeOff } from 'lucide-react';
+import { LogIn, Shield, Eye, EyeOff, Server } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export function Login() {
@@ -30,13 +30,15 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-base-200 to-base-300 p-4">
-      <div className="card w-full max-w-md bg-base-100 shadow-2xl">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-base-100 to-base-300 p-4">
+      <div className="card bg-gradient-to-bl from-base-100 to-base-100/20 w-full max-w-md bg-base-100 shadow-2xl">
         <div className="card-body">
           {/* Header */}
           <div className="text-center mb-6">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-primary rounded-full mb-4">
-              <Shield className="w-8 h-8 text-primary-content" />
+            <div className="avatar avatar-placeholder mb-4">
+                <div className='bg-primary text-primary-content w-20 rounded-full flex items-center justify-center'>
+                    <Server className="w-8 h-8 text-primary-content" />
+                </div>
             </div>
             <h1 className="text-3xl font-bold text-base-content">CMC Manager</h1>
             <p className="text-base-content/60 mt-2">Sign in to continue</p>
@@ -108,7 +110,7 @@ export function Login() {
                 </button>
               </div>
             </div>
-
+            <div className='card-actions'>
             {/* Submit Button */}
             <button
               type="submit"
@@ -127,6 +129,7 @@ export function Login() {
                 </>
               )}
             </button>
+            </div>
           </form>
 
           {/* Quick Login Buttons */}
