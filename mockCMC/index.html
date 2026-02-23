@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Endpoints</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: white;
+            margin-bottom: 40px;
+            text-align: center;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .endpoints {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .endpoint-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .endpoint-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+        }
+        .method {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: white;
+            font-size: 0.9em;
+        }
+        .get { background-color: #61affe; }
+        .post { background-color: #49cc90; }
+        .put { background-color: #fca130; }
+        .delete { background-color: #f93e3e; }
+        .patch { background-color: #50e3c2; }
+        .path {
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            margin: 10px 0;
+            word-break: break-all;
+            color: #333;
+        }
+        .description {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 10px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 API Endpoints</h1>
+        <div class="endpoints" id="endpoints"></div>
+    </div>
+
+    <script>
+        const endpoints = [
+            { method: 'GET', path: '/api/users', description: 'Fetch all users' },
+            { method: 'POST', path: '/api/users', description: 'Create a new user' },
+            { method: 'GET', path: '/api/users/:id', description: 'Get user by ID' },
+            { method: 'PUT', path: '/api/users/:id', description: 'Update user' },
+            { method: 'DELETE', path: '/api/users/:id', description: 'Delete user' },
+        ];
+
+        const container = document.getElementById('endpoints');
+        endpoints.forEach(ep => {
+            const card = document.createElement('div');
+            card.className = 'endpoint-card';
+            card.innerHTML = `
+                <span class="method ${ep.method.toLowerCase()}">${ep.method}</span>
+                <div class="path">${ep.path}</div>
+                <div class="description">${ep.description}</div>
+            `;
+            container.appendChild(card);
+        });
+    </script>
+</body>
+</html>
