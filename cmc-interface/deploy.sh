@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/bash
 
 # CMC Central Manager - Two-Step Deployment
 # Step 1: Build as user (has Node.js access)

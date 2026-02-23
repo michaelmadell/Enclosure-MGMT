@@ -59,7 +59,9 @@ Thumbs.db
 
 *.pem
 
-cmc-manager.db*
+cmc-manager.db
+cmc-manager.db-shm
+cmc-manager.db-wal
 
 node_modules/
 dist/
